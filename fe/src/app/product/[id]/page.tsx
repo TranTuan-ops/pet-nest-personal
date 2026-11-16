@@ -1,0 +1,1459 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
+import {
+  Heart,
+  Star,
+  ShoppingCart,
+  Truck,
+  Shield,
+  RotateCcw,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Package,
+  CheckCircle2,
+  Minus,
+  Plus,
+  ZoomIn,
+  Trash2,
+} from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import Header from "@/components/layout/Header";
+import { api } from "../../../../utils/axios";
+import { cn } from "@/lib/utils";
+import { useLanguage } from "@/context/LanguageContext";
+import viConfig from "../../../../utils/petPagesConfig.vi";
+import enConfig from "../../../../utils/petPagesConfig.en";
+import { ModalCore } from "@/components/core/ModalCore";
+import { ButtonCore } from "@/components/core/ButtonCore";
+
+interface ProductAttribute {
+  _id: string;
+  value: string;
+  parentId: string | null;
+  categories?: string[];
+}
+
+interface ProductVariant {
+  _id: string;
+  product_id: string;
+  images: {
+    url: string;
+  }[];
+  attributes: ProductAttribute[];
+  sellPrice: number;
+  importBatches: {
+    _id: string;
+    variantId: string;
+    importDate: string;
+    quantity: number;
+    costPrice: number;
+  }[];
+  availableQuantity: number;
+}
+
+interface Product {
+  _id: string;
+  name: string;
+  description: string;
+  category: {
+    id: string;
+    name: string;
+  }[];
+  createAt: string;
+  updateAt: string;
+  images?: {
+    url: string;
+  }[];
+  variants: ProductVariant[];
+  categoryInfo: {
+    _id: string;
+    name: string;
+    description: string;
+    parentCategory: string | null;
+    createAt: string;
+    updateAt: string;
+    image: string;
+  }[];
+  reviews: any[];
+  reviewUsers: any[];
+  averageRating: number | null;
+  totalReviews: number;
+}
+
+interface UnreviewedProduct {
+  _id: string;
+  productName: string;
+  productDescription: string;
+  productBrand: string;
+  totalQuantity: number;
+  lastPurchaseDate: string;
+}
+
+interface UnreviewedData {
+  totalPurchasedProducts: number;
+  totalReviewedProducts: number;
+  unreviewedProducts: UnreviewedProduct[];
+  unreviewedCount: number;
+}
+
+function formatPrice(price: number) {
+  return (
+    new Intl.NumberFormat("vi-VN", {
+      maximumFractionDigits: 0,
+    }).format(Math.round(price)) + "đ"
+  );
+}
+
+function StarRating({
+  rating,
+  size = "sm",
+}: {
+  rating: number;
+  size?: "sm" | "md" | "lg";
+}) {
+  const sizeMap = { sm: "w-3.5 h-3.5", md: "w-5 h-5", lg: "w-7 h-7" };
+  const cls = sizeMap[size];
+  return (
+    <div className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <Star
+          key={star}
+          className={`${cls} transition-colors ${star <= Math.floor(rating)
+            ? "fill-amber-400 text-amber-400"
+            : star <= rating
+              ? "fill-amber-400/50 text-amber-400"
+              : "fill-gray-200 text-gray-200"
+            }`}
+        />
+      ))}
+    </div>
+  );
+}
+
+export default function ProductPage() {
+  const params = useParams();
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState(0);
+  const [quantity, setQuantity] = useState(1);
+  const [activeAction, setActiveAction] = useState<"add" | "buy" | null>(null);
+  const [addToCartError, setAddToCartError] = useState<string | null>(null);
+  const [addToCartSuccess, setAddToCartSuccess] = useState(false);
+  const cartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const { lang } = useLanguage();
+  const router = useRouter();
+  const config =
+    lang === "vi" ? viConfig.productDetail : enConfig.productDetail;
+  const [isWishlisted, setIsWishlisted] = useState(false);
+  const [wishlistLoading, setWishlistLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<"description" | "reviews">(
+    "description",
+  );
+  const [imageZoom, setImageZoom] = useState(false);
+
+  // Review form states
+  const [unreviewedData, setUnreviewedData] = useState<UnreviewedData | null>(
+    null,
+  );
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [reviewForm, setReviewForm] = useState({
+    rating: 0,
+    comment: "",
+    images: [] as File[],
+  });
+  const [hoveredStar, setHoveredStar] = useState(0);
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  // States for deletion modal
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [reviewToDelete, setReviewToDelete] = useState<string | null>(null);
+  const [activePreviewUrl, setActivePreviewUrl] = useState<string | null>(null);
+  const [deletingLoading, setDeletingLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const token = sessionStorage.getItem("token");
+        if (token) {
+          const response = await api.get("/auth/myprofile");
+          if (response.data.success) {
+            setCurrentUser(response.data.user);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching profile:", err);
+      }
+    };
+    fetchProfile();
+  }, []);
+
+  useEffect(() => {
+    const fetchProduct = async () => {
+      try {
+        setLoading(true);
+        const response = await api.get(`/products/productById/${params.id}`);
+        if (response.data.success) {
+          const fetchedProduct: Product = response.data.data;
+          setProduct(fetchedProduct);
+
+          const defaultVariant =
+            fetchedProduct.variants.find((v) => v.availableQuantity > 0) ||
+            fetchedProduct.variants[0] ||
+            null;
+
+          setSelectedVariantId(defaultVariant?._id || null);
+        } else {
+          throw new Error("Failed to fetch product");
+        }
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "An error occurred while fetching product",
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (params.id) fetchProduct();
+  }, [params.id]);
+
+  useEffect(() => {
+    const fetchUnreviewedProducts = async () => {
+      try {
+        const token = sessionStorage.getItem("token");
+        if (!token) return;
+
+        const response = await api.get(`/reviews/unreviewed/${params.id}`);
+        if (response.data.success) setUnreviewedData(response.data.data);
+      } catch {
+        // Bỏ qua để tránh spam 401 trên console
+      }
+    };
+    if (params.id) fetchUnreviewedProducts();
+  }, [params.id]);
+
+  useEffect(() => {
+    const fetchWishlist = async () => {
+      try {
+        const token = sessionStorage.getItem("token");
+        if (!token) return;
+
+        const res = await api.get("/wishlist");
+        if (res.data.success && res.data.products) {
+          setIsWishlisted(
+            res.data.products.some((p: any) => p._id === product?._id),
+          );
+        }
+      } catch {
+        // Bỏ qua để tránh spam 401 trên console
+      }
+    };
+    if (product?._id) fetchWishlist();
+  }, [product?._id]);
+
+  // Reset selected image when variant changes
+  useEffect(() => {
+    setSelectedImage(0);
+    setQuantity(1);
+  }, [selectedVariantId]);
+
+  const handleCartAction = async (type: "add" | "buy") => {
+    const selectedVariant = product?.variants.find(
+      (v) => v._id === selectedVariantId,
+    );
+
+    if (!product || !selectedVariant) return;
+    if (quantity <= 0) return;
+
+    try {
+      setActiveAction(type);
+      setAddToCartError(null);
+
+      if (type === "add") {
+        if (cartTimeoutRef.current) clearTimeout(cartTimeoutRef.current);
+        setAddToCartSuccess(false);
+      }
+
+      const response = await api.post("/cart/addtocart", {
+        productId: product._id,
+        productVariantId: selectedVariant._id,
+        quantity,
+      });
+
+      if (response.data.success) {
+        window.dispatchEvent(new Event("cartUpdated"));
+
+        if (type === "buy") {
+          const cartItems = response.data.data?.cartItems || [];
+          const addedItem = cartItems.find((item: any) => {
+            const pId = item.productId?._id || item.productId;
+            const vId = item.productVariantId?._id || item.productVariantId;
+            return (
+              pId?.toString() === product._id &&
+              vId?.toString() === selectedVariant._id
+            );
+          });
+
+          if (addedItem) {
+            localStorage.setItem("checkoutItems", JSON.stringify([String(addedItem._id)]));
+            router.push("/checkout");
+          } else {
+            router.push("/cart");
+          }
+        } else {
+          setAddToCartSuccess(true);
+          cartTimeoutRef.current = setTimeout(() => setAddToCartSuccess(false), 3000);
+        }
+      } else {
+        throw new Error(response.data.message || config.addToCartFail);
+      }
+    } catch (err) {
+      setAddToCartError(err instanceof Error ? err.message : config.addToCartFail);
+    } finally {
+      setActiveAction(null);
+    }
+  };
+
+  const handleBuyNow = () => handleCartAction("buy");
+  const handleAddToCart = () => handleCartAction("add");
+
+  const handleToggleWishlist = async () => {
+    if (!product) return;
+    setWishlistLoading(true);
+    try {
+      if (isWishlisted) {
+        await api.post("/wishlist/remove", { productId: product._id });
+        setIsWishlisted(false);
+      } else {
+        await api.post("/wishlist/add", { productId: product._id });
+        setIsWishlisted(true);
+      }
+    } catch { }
+    setWishlistLoading(false);
+  };
+
+  const handleReviewSubmit = async () => {
+    if (!product) return;
+    if (reviewForm.rating === 0) {
+      setReviewError(config.reviewForm.minRating);
+      return;
+    }
+    if (reviewForm.comment.length < 10) {
+      setReviewError(config.reviewForm.minCommentLength);
+      return;
+    }
+    const maxFileSize = 5 * 1024 * 1024;
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    for (const image of reviewForm.images) {
+      if (image.size > maxFileSize) {
+        setReviewError("Kích thước file không được vượt quá 5MB");
+        return;
+      }
+      if (!allowedTypes.includes(image.type)) {
+        setReviewError("Chỉ chấp nhận file ảnh (JPEG, PNG, WebP)");
+        return;
+      }
+    }
+    try {
+      setSubmittingReview(true);
+      setReviewError(null);
+      let response;
+      if (reviewForm.images.length === 0) {
+        response = await api.post("/reviews", {
+          productId: product._id,
+          rating: reviewForm.rating,
+          comment: reviewForm.comment,
+        });
+      } else {
+        const formData = new FormData();
+        formData.append("productId", product._id);
+        formData.append("rating", reviewForm.rating.toString());
+        formData.append("comment", reviewForm.comment);
+        reviewForm.images.forEach((image) => formData.append("images", image));
+        response = await api.post("/reviews", formData);
+      }
+      if (response.data.success) {
+        setShowReviewForm(false);
+        setReviewForm({ rating: 0, comment: "", images: [] });
+        window.location.reload();
+      } else {
+        throw new Error(response.data.message || config.reviewForm.error);
+      }
+    } catch (err: any) {
+      if (err.response?.status === 413) setReviewError("File ảnh quá lớn.");
+      else if (err.response?.status === 400)
+        setReviewError(err.response.data.message || "Dữ liệu không hợp lệ");
+      else if (err.response?.status === 500)
+        setReviewError("Lỗi server. Vui lòng thử lại sau.");
+      else
+        setReviewError(
+          err instanceof Error ? err.message : config.reviewForm.error,
+        );
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
+  const handleDeleteReview = async (reviewId: string) => {
+    setReviewToDelete(reviewId);
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDeleteReview = async () => {
+    if (!reviewToDelete) return;
+    try {
+      setDeletingLoading(true);
+      const response = await api.delete(`/reviews/${reviewToDelete}`);
+      if (response.data.success) {
+        setProduct((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            reviews: prev.reviews.filter((r) => r._id !== reviewToDelete),
+            totalReviews: Math.max(0, prev.totalReviews - 1),
+          };
+        });
+        setIsDeleteModalOpen(false);
+        setReviewToDelete(null);
+      } else {
+        alert(response.data.error || "Không thể xóa đánh giá");
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Lỗi khi xóa đánh giá");
+    } finally {
+      setDeletingLoading(false);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "";
+    return date.toLocaleDateString(lang === "vi" ? "vi-VN" : "en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+          <div className="animate-pulse grid lg:grid-cols-2 gap-12">
+            <div className="space-y-4">
+              <div className="aspect-square rounded-2xl bg-gray-200" />
+              <div className="grid grid-cols-5 gap-3">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div
+                    key={i}
+                    className="aspect-square rounded-xl bg-gray-200"
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="space-y-6 pt-4">
+              <div className="h-6 bg-gray-200 rounded w-1/3" />
+              <div className="h-10 bg-gray-200 rounded w-3/4" />
+              <div className="h-8 bg-gray-200 rounded w-1/4" />
+              <div className="h-20 bg-gray-200 rounded" />
+              <div className="h-14 bg-gray-200 rounded" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !product) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <div className="max-w-7xl mx-auto px-4 py-24 text-center">
+          <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <p className="text-xl text-gray-500">
+            {error || config.productNotFound}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const variant =
+    product.variants.find((v) => v._id === selectedVariantId) ||
+    product.variants[0] ||
+    ({} as ProductVariant);
+
+  const inStock = (variant?.availableQuantity || 0) > 0;
+
+  const dedupeImages = (imgs: { url: string }[] = []) => {
+    const used = new Set<string>();
+    return imgs.filter((img) => {
+      if (!img?.url || used.has(img.url)) return false;
+      used.add(img.url);
+      return true;
+    });
+  };
+
+  const variantImages = dedupeImages(variant?.images || []);
+  const productImages = dedupeImages(product.images || []);
+  const images = variantImages.length > 0 ? variantImages : productImages;
+
+  const parentAttributes = product.variants
+    .flatMap((v) => v.attributes || [])
+    .filter((attr) => attr.parentId === null)
+    .reduce(
+      (acc, attr) => {
+        acc[attr._id] = attr.value;
+        return acc;
+      },
+      {} as Record<string, string>,
+    );
+
+  const selectedOptionsByParent = (variant.attributes || []).reduce(
+    (acc, attr) => {
+      if (attr.parentId) acc[attr.parentId] = attr._id;
+      return acc;
+    },
+    {} as Record<string, string>,
+  );
+
+  const attributeOptions: Record<string, ProductAttribute[]> = {};
+  product.variants.forEach((v) => {
+    (v.attributes || []).forEach((attr) => {
+      if (attr.parentId && parentAttributes[attr.parentId]) {
+        if (!attributeOptions[attr.parentId]) attributeOptions[attr.parentId] = [];
+        if (!attributeOptions[attr.parentId].some((opt) => opt._id === attr._id)) {
+          attributeOptions[attr.parentId].push(attr);
+        }
+      }
+    });
+  });
+
+  const getVariantForAttributeOption = (
+    parentId: string,
+    optionAttributeId: string,
+  ) => {
+    return product.variants.find((candidate) => {
+      const candidateSelection = (candidate.attributes || []).reduce(
+        (acc, attr) => {
+          if (attr.parentId) acc[attr.parentId] = attr._id;
+          return acc;
+        },
+        {} as Record<string, string>,
+      );
+
+      if (candidateSelection[parentId] !== optionAttributeId) return false;
+
+      return Object.entries(selectedOptionsByParent).every(([pId, attrId]) => {
+        if (pId === parentId) return true;
+        return candidateSelection[pId] === attrId;
+      });
+    });
+  };
+
+  const isUnreviewed = unreviewedData?.unreviewedProducts?.some(
+    (p) => p._id === product._id,
+  );
+  const unreviewedProduct = unreviewedData?.unreviewedProducts?.find(
+    (p) => p._id === product._id,
+  );
+
+  // Rating distribution
+  const ratingCounts = [5, 4, 3, 2, 1].map((star) => ({
+    star,
+    count: product.reviews.filter((r) => r.rating === star).length,
+  }));
+
+  return (
+    <div
+      className="min-h-screen"
+      style={{
+        background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+      }}
+    >
+      <Header />
+
+      {/* Breadcrumb */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-2">
+        <nav className="flex items-center gap-2 text-sm text-gray-400">
+          <a href="/" className="hover:text-primary transition-colors">
+            Trang chủ
+          </a>
+          <ChevronRight className="w-3.5 h-3.5" />
+          {product.category?.[0] && (
+            <>
+              <a
+                href={`/category/${product.category[0].id}`}
+                className="hover:text-primary transition-colors"
+              >
+                {product.category[0].name}
+              </a>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </>
+          )}
+          <span className="text-gray-600 font-medium truncate max-w-xs">
+            {product.name}
+          </span>
+        </nav>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* ── Main Product Grid ─────────────────────────────────────────────── */}
+        <div className="grid lg:grid-cols-2 gap-10 mb-14">
+          {/* ── Left: Image Gallery ────────────────────────────────────────── */}
+          <div className="space-y-4">
+            {/* Main Image */}
+            <div
+              className="relative aspect-square rounded-3xl overflow-hidden bg-white shadow-xl cursor-zoom-in group"
+              onClick={() => setImageZoom(true)}
+            >
+              <Image
+                src={images[selectedImage]?.url || "/placeholder.svg"}
+                alt={product.name}
+                fill
+                className="object-cover transition-transform duration-500 group-hover:scale-105"
+                sizes="(max-width: 768px) 100vw, 50vw"
+                priority
+              />
+              {/* Stock overlay */}
+              {!inStock && (
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                  <span className="bg-white text-gray-800 font-bold text-lg px-6 py-2 rounded-full shadow-lg">
+                    Hết hàng
+                  </span>
+                </div>
+              )}
+              {/* Zoom hint */}
+              <div className="absolute bottom-4 right-4 bg-white/80 backdrop-blur-sm text-gray-600 rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
+                <ZoomIn className="w-4 h-4" />
+              </div>
+              {/* Image nav arrows */}
+              {images.length > 1 && (
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedImage(
+                        (prev) => (prev - 1 + images.length) % images.length,
+                      );
+                    }}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white rounded-full p-2 shadow-md opacity-0 group-hover:opacity-100 transition-all"
+                  >
+                    <ChevronLeft className="w-4 h-4 text-gray-700" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedImage((prev) => (prev + 1) % images.length);
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white rounded-full p-2 shadow-md opacity-0 group-hover:opacity-100 transition-all"
+                  >
+                    <ChevronRight className="w-4 h-4 text-gray-700" />
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Thumbnails */}
+            {images.length > 1 && (
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                {images.map((img, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setSelectedImage(i)}
+                    className={`relative shrink-0 w-20 h-20 rounded-xl overflow-hidden border-2 transition-all duration-200 ${selectedImage === i
+                      ? "border-primary shadow-md scale-105"
+                      : "border-transparent hover:border-gray-300 opacity-60 hover:opacity-100"
+                      }`}
+                  >
+                    <Image
+                      src={img.url || "/placeholder.svg"}
+                      alt={`${product.name} - ${i + 1}`}
+                      fill
+                      className="object-cover"
+                      sizes="80px"
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── Right: Product Info ─────────────────────────────────────────── */}
+          <div className="space-y-6 lg:sticky lg:top-24 lg:self-start">
+            {/* Category badges */}
+            <div className="flex flex-wrap gap-2">
+              {(product.category || []).map((cat, idx) => (
+                <span
+                  key={cat.id || idx}
+                  className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-primary/10 text-primary border border-primary/20"
+                >
+                  {cat.name}
+                </span>
+              ))}
+            </div>
+
+            {/* Product Name */}
+            <h1 className="text-3xl font-extrabold text-gray-900 leading-tight">
+              {product.name}
+            </h1>
+
+            {/* Rating row */}
+            {product.averageRating !== null && product.totalReviews > 0 && (
+              <div className="flex items-center gap-3">
+                <StarRating rating={product.averageRating} size="sm" />
+                <span className="font-bold text-amber-500">
+                  {product.averageRating?.toFixed(1)}
+                </span>
+                <span className="text-sm text-gray-400">
+                  ({product.totalReviews} đánh giá)
+                </span>
+              </div>
+            )}
+
+            {/* Price */}
+            <div className="flex items-end gap-4">
+              <span className="text-4xl font-black text-primary">
+                {formatPrice(variant.sellPrice || 0)}
+              </span>
+              {inStock ? (
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Còn {variant.availableQuantity} sản phẩm
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-red-500 bg-red-50 px-3 py-1.5 rounded-full border border-red-200">
+                  {config.outOfStock}
+                </span>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Description */}
+            <p className="text-gray-500 text-base leading-relaxed">
+              {product.description}
+            </p>
+
+            {/* Variant Attributes */}
+            {Object.entries(attributeOptions).map(([parentId, options]) => {
+              const currentOptionAttrId = selectedOptionsByParent[parentId];
+              const currentOption = options.find(
+                (opt) => opt._id === currentOptionAttrId,
+              );
+
+              return (
+                <div key={parentId}>
+                  <p className="text-sm font-semibold text-gray-700 mb-2">
+                    {parentAttributes[parentId][0].toUpperCase() +
+                      parentAttributes[parentId].slice(1)}
+                    :
+                    <span className="text-primary ml-2">
+                      {currentOption?.value || "-"}
+                    </span>
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {options.map((opt) => {
+                      const mappedVariant = getVariantForAttributeOption(
+                        parentId,
+                        opt._id,
+                      );
+                      const disabled = !mappedVariant;
+                      const active = currentOptionAttrId === opt._id;
+
+                      return (
+                        <button
+                          key={opt._id}
+                          onClick={() => {
+                            if (mappedVariant) setSelectedVariantId(mappedVariant._id);
+                          }}
+                          disabled={disabled}
+                          className={`px-4 py-2 rounded-xl text-sm font-medium border-2 transition-all duration-200 ${
+                            active
+                              ? "border-primary bg-primary text-white shadow-md shadow-primary/25"
+                              : disabled
+                                ? "border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed"
+                                : "border-gray-200 bg-white text-gray-600 hover:border-primary/50 hover:text-primary"
+                          }`}
+                        >
+                          {opt.value}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Quantity + Add to cart */}
+            {inStock && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-semibold text-gray-700">
+                    {config.quantity}:
+                  </span>
+                  <div className="flex items-center border-2 border-gray-200 rounded-xl overflow-hidden">
+                    <button
+                      onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                      className="px-3 py-2 hover:bg-gray-50 text-gray-600 transition-colors"
+                    >
+                      <Minus className="w-4 h-4" />
+                    </button>
+                    <span className="px-5 py-2 font-bold text-gray-900 min-w-12 text-center border-x-2 border-gray-200">
+                      {quantity}
+                    </span>
+                    <button
+                      onClick={() =>
+                        setQuantity((q) =>
+                          Math.min(variant.availableQuantity, q + 1),
+                        )
+                      }
+                      className="px-3 py-2 hover:bg-gray-50 text-gray-600 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  {/* Add to Cart — outline style */}
+                  <ButtonCore
+                    onClick={handleAddToCart}
+                    isLoading={activeAction === "add"}
+                    disabled={addToCartSuccess}
+                    variantType="outline"
+                    className={cn(
+                      "flex-1 h-[52px]",
+                      addToCartSuccess &&
+                      "bg-emerald-500 border-emerald-500 text-white shadow-emerald-200 hover:bg-emerald-600 hover:text-white hover:border-emerald-600",
+                    )}
+                    leftIcon={
+                      !addToCartSuccess && <ShoppingCart className="w-4 h-4" />
+                    }
+                  >
+                    {addToCartSuccess ? (
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Đã thêm!</span>
+                      </div>
+                    ) : (
+                      config.addToCart
+                    )}
+                  </ButtonCore>
+
+                  {/* Buy Now — filled orange gradient */}
+                  <ButtonCore
+                    onClick={handleBuyNow}
+                    isLoading={activeAction === "buy"}
+                    className="flex-1 h-[52px]"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, #f97316 0%, #ef4444 100%)",
+                      boxShadow: "0 4px 16px rgba(249,115,22,0.35)",
+                    }}
+                    leftIcon={
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="w-4 h-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2.5}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M13 10V3L4 14h7v7l9-11h-7z"
+                        />
+                      </svg>
+                    }
+                  >
+                    Mua ngay
+                  </ButtonCore>
+
+                  {/* Wishlist Button — Icon Only */}
+                  <ButtonCore
+                    onClick={handleToggleWishlist}
+                    isLoading={wishlistLoading}
+                    variantType="outline"
+                    className={cn(
+                      "w-[52px] h-[52px] p-0 shrink-0",
+                      isWishlisted &&
+                      "text-red-500 border-red-100 bg-red-50 hover:bg-red-100 hover:border-red-200",
+                    )}
+                    title={isWishlisted ? "Đã yêu thích" : "Thêm vào yêu thích"}
+                  >
+                    <Heart
+                      className={cn("w-5 h-5", isWishlisted && "fill-current")}
+                    />
+                  </ButtonCore>
+                </div>
+
+                {addToCartError && (
+                  <p className="text-sm text-red-500 bg-red-50 px-3 py-2 rounded-lg border border-red-200">
+                    {addToCartError}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Out of stock CTA */}
+            {!inStock && (
+              <div className="space-y-3">
+                <div className="flex gap-3">
+                  <ButtonCore
+                    disabled
+                    variantType="outline"
+                    className="flex-1 h-[52px] opacity-50 cursor-not-allowed"
+                    leftIcon={<ShoppingCart className="w-4 h-4" />}
+                  >
+                    {config.outOfStock}
+                  </ButtonCore>
+                  <ButtonCore
+                    disabled
+                    className="flex-1 h-[52px] opacity-50 cursor-not-allowed"
+                    leftIcon={
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="w-4 h-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2.5}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M13 10V3L4 14h7v7l9-11h-7z"
+                        />
+                      </svg>
+                    }
+                  >
+                    Mua ngay
+                  </ButtonCore>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleToggleWishlist}
+                    disabled={wishlistLoading}
+                    className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${isWishlisted
+                      ? "text-red-500"
+                      : "text-gray-400 hover:text-red-400"
+                      }`}
+                  >
+                    <Heart
+                      className={`w-4 h-4 ${isWishlisted ? "fill-red-500" : ""}`}
+                    />
+                    {isWishlisted ? "Đã yêu thích" : "Thêm vào yêu thích"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Image/Review Zoom Dialog ───────────────────────────────────────── */}
+        {(imageZoom || activePreviewUrl) && (
+          <div
+            className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 animate-in fade-in duration-300"
+            onClick={() => {
+              setImageZoom(false);
+              setActivePreviewUrl(null);
+            }}
+          >
+            <button
+              className="absolute top-6 right-6 text-white/50 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 transition-all"
+              onClick={() => {
+                setImageZoom(false);
+                setActivePreviewUrl(null);
+              }}
+            >
+              <X className="w-8 h-8" />
+            </button>
+            <div className="relative max-w-4xl max-h-[90vh] w-full h-full flex items-center justify-center">
+              <Image
+                src={activePreviewUrl || images[selectedImage]?.url || "/placeholder.svg"}
+                alt={product.name}
+                fill
+                className="object-contain"
+                sizes="90vw"
+                priority
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ── Write Review Banner ────────────────────────────────────────────── */}
+        {isUnreviewed && unreviewedProduct && (
+          <div className="mb-12">
+            <div
+              className="relative overflow-hidden rounded-3xl p-6 flex items-center justify-between gap-6"
+              style={{
+                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              }}
+            >
+              <div
+                className="absolute inset-0 opacity-10"
+                style={{
+                  backgroundImage:
+                    "radial-gradient(circle at 20% 80%, white 1px, transparent 1px), radial-gradient(circle at 80% 20%, white 1px, transparent 1px)",
+                  backgroundSize: "30px 30px",
+                }}
+              />
+              <div className="relative space-y-1">
+                <h3 className="text-xl font-bold text-white">
+                  {config.unreviewedSection.title}
+                </h3>
+                <p className="text-white/80 text-sm">
+                  {config.unreviewedSection.subtitle}
+                </p>
+                {unreviewedProduct.lastPurchaseDate && (
+                  <p className="text-white/60 text-xs">
+                    {config.unreviewedSection.purchasedOn.replace(
+                      "{date}",
+                      formatDate(unreviewedProduct.lastPurchaseDate),
+                    )}
+                  </p>
+                )}
+              </div>
+              <Dialog open={showReviewForm} onOpenChange={setShowReviewForm}>
+                <DialogTrigger asChild>
+                  <ButtonCore
+                    variantType="outline"
+                    className="relative shrink-0 bg-white text-violet-700 border-none hover:bg-white/90 shadow-lg"
+                  >
+                    {config.unreviewedSection.writeReview}
+                  </ButtonCore>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[520px] rounded-3xl border-0 shadow-2xl">
+                  <DialogHeader>
+                    <DialogTitle className="text-2xl font-bold">
+                      {config.reviewForm.title}
+                    </DialogTitle>
+                    <p className="text-sm text-gray-400 mt-1">
+                      {config.reviewForm.subtitle}
+                    </p>
+                  </DialogHeader>
+                  <div className="space-y-5 mt-2">
+                    {/* Star Rating Input */}
+                    <div>
+                      <Label className="text-sm font-semibold mb-2 block">
+                        {config.reviewForm.rating}
+                      </Label>
+                      <div className="flex gap-1">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            onMouseEnter={() => setHoveredStar(star)}
+                            onMouseLeave={() => setHoveredStar(0)}
+                            onClick={() =>
+                              setReviewForm({ ...reviewForm, rating: star })
+                            }
+                            className="focus:outline-none transition-transform hover:scale-110"
+                          >
+                            <Star
+                              className={`w-9 h-9 transition-colors ${star <= (hoveredStar || reviewForm.rating)
+                                ? "fill-amber-400 text-amber-400"
+                                : "text-gray-200 fill-gray-200"
+                                }`}
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Comment */}
+                    <div>
+                      <Label
+                        htmlFor="review-comment"
+                        className="text-sm font-semibold mb-2 block"
+                      >
+                        {config.reviewForm.comment}
+                      </Label>
+                      <Textarea
+                        id="review-comment"
+                        placeholder={config.reviewForm.commentPlaceholder}
+                        value={reviewForm.comment}
+                        onChange={(e) =>
+                          setReviewForm({
+                            ...reviewForm,
+                            comment: e.target.value,
+                          })
+                        }
+                        rows={4}
+                        className="rounded-xl border-gray-200 resize-none focus:ring-2 focus:ring-primary/30"
+                      />
+                    </div>
+
+                    {/* Images */}
+                    <div>
+                      <Label className="text-sm font-semibold mb-2 block">
+                        {config.reviewForm.images}
+                      </Label>
+                      <label className="flex items-center gap-2 px-4 py-3 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            const files = Array.from(e.target.files || []);
+                            const maxFileSize = 5 * 1024 * 1024;
+                            const allowedTypes = [
+                              "image/jpeg",
+                              "image/jpg",
+                              "image/png",
+                              "image/webp",
+                            ];
+                            const validFiles = files.filter((file) => {
+                              if (file.size > maxFileSize) {
+                                alert(`File ${file.name} quá lớn (tối đa 5MB)`);
+                                return false;
+                              }
+                              if (!allowedTypes.includes(file.type)) {
+                                alert(
+                                  `File ${file.name} không phải là ảnh hợp lệ`,
+                                );
+                                return false;
+                              }
+                              return true;
+                            });
+                            setReviewForm({
+                              ...reviewForm,
+                              images: [...reviewForm.images, ...validFiles],
+                            });
+                          }}
+                        />
+                        <Plus className="w-4 h-4 text-gray-400" />
+                        <span className="text-sm text-gray-400">
+                          Thêm ảnh (JPEG, PNG, WebP – tối đa 5MB)
+                        </span>
+                      </label>
+                      {reviewForm.images.length > 0 && (
+                        <div className="grid grid-cols-4 gap-2 mt-3">
+                          {reviewForm.images.map((file, index) => (
+                            <div key={index} className="relative aspect-square">
+                              <div className="w-full h-full rounded-xl overflow-hidden bg-gray-100">
+                                <img
+                                  src={URL.createObjectURL(file)}
+                                  alt=""
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setReviewForm({
+                                    ...reviewForm,
+                                    images: reviewForm.images.filter(
+                                      (_, i) => i !== index,
+                                    ),
+                                  })
+                                }
+                                className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center hover:bg-red-600 shadow-md"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {reviewError && (
+                      <p className="text-sm text-red-500 bg-red-50 px-3 py-2 rounded-xl border border-red-100">
+                        {reviewError}
+                      </p>
+                    )}
+
+                    <div className="flex justify-end gap-3 pt-2">
+                      <ButtonCore
+                        variantType="ghost"
+                        onClick={() => setShowReviewForm(false)}
+                        className="h-12"
+                      >
+                        {config.cancel}
+                      </ButtonCore>
+                      <ButtonCore
+                        onClick={handleReviewSubmit}
+                        isLoading={submittingReview}
+                        loadingText="Đang gửi..."
+                        className="h-12"
+                      >
+                        {config.reviewForm.submit}
+                      </ButtonCore>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
+        )}
+
+        {/* ── Tabs: Description + Reviews ─────────────────────────────────── */}
+        <div className="mt-4 mb-12">
+          {/* Tab headers */}
+          <div className="flex border-b border-gray-200 mb-6">
+            {[
+              { key: "description", label: "Mô tả sản phẩm" },
+              { key: "reviews", label: `Đánh giá (${product.totalReviews})` },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() =>
+                  setActiveTab(tab.key as "description" | "reviews")
+                }
+                className={`px-6 py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === tab.key
+                  ? "border-primary text-primary"
+                  : "border-transparent text-gray-400 hover:text-gray-700"
+                  }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab: Description */}
+          {activeTab === "description" && (
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8">
+              <h2 className="text-xl font-extrabold text-gray-900 mb-4">
+                Mô tả chi tiết
+              </h2>
+              {product.description ? (
+                <p className="text-gray-600 leading-relaxed text-base whitespace-pre-line">
+                  {product.description}
+                </p>
+              ) : (
+                <p className="text-gray-400 italic">
+                  Chưa có mô tả chi tiết cho sản phẩm này.
+                </p>
+              )}
+              {/* Additional product info */}
+              <div className="mt-8 grid grid-cols-2 sm:grid-cols-3 gap-4">
+                {[
+                  {
+                    icon: Truck,
+                    label: "Miễn phí vận chuyển",
+                    desc: "Cho đơn hàng từ 200.000đ",
+                    color: "text-emerald-600",
+                    bg: "bg-emerald-50",
+                  },
+                  {
+                    icon: Shield,
+                    label: "Bảo hành 2 năm",
+                    desc: "Đổi mới nếu lỗi sản phẩm",
+                    color: "text-blue-600",
+                    bg: "bg-blue-50",
+                  },
+                  {
+                    icon: RotateCcw,
+                    label: "Đổi trả 30 ngày",
+                    desc: "Hoàn tiền nếu không hài lòng",
+                    color: "text-violet-600",
+                    bg: "bg-violet-50",
+                  },
+                ].map(({ icon: Icon, label, desc, color, bg }) => (
+                  <div
+                    key={label}
+                    className={`flex items-start gap-3 ${bg} rounded-2xl p-4`}
+                  >
+                    <Icon className={`w-5 h-5 mt-0.5 shrink-0 ${color}`} />
+                    <div>
+                      <p className={`text-sm font-semibold ${color}`}>
+                        {label}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">{desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tab: Reviews */}
+          {activeTab === "reviews" && (
+            <div>
+              {product.reviews.length === 0 ? (
+                <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-12 text-center">
+                  <Star className="w-12 h-12 text-gray-200 mx-auto mb-3" />
+                  <p className="text-gray-400 text-base">
+                    Chưa có đánh giá nào cho sản phẩm này.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid lg:grid-cols-3 gap-8">
+                  {/* Rating overview */}
+                  <div>
+                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 text-center space-y-4">
+                      <div className="text-6xl font-black text-gray-900">
+                        {product.averageRating?.toFixed(1)}
+                      </div>
+                      <StarRating
+                        rating={product.averageRating || 0}
+                        size="md"
+                      />
+                      <p className="text-sm text-gray-400">
+                        {config.basedOnReviews.replace(
+                          "{n}",
+                          String(product.totalReviews),
+                        )}
+                      </p>
+                      <div className="space-y-2">
+                        {ratingCounts.map(({ star, count }) => (
+                          <div
+                            key={star}
+                            className="flex items-center gap-2 text-sm"
+                          >
+                            <span className="text-gray-500 w-4 text-right">
+                              {star}
+                            </span>
+                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
+                            <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-amber-400 transition-all"
+                                style={{
+                                  width: `${product.totalReviews ? (count / product.totalReviews) * 100 : 0}%`,
+                                }}
+                              />
+                            </div>
+                            <span className="text-gray-400 w-6 text-left">
+                              {count}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Reviews list */}
+                  <div className="lg:col-span-2 space-y-4">
+                    {product.reviews.map((review, index) => (
+                      <div
+                        key={index}
+                        className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow"
+                      >
+                        <div className="flex items-start gap-4">
+                          <Avatar className="w-11 h-11 ring-2 ring-gray-100">
+                            <AvatarImage
+                              src="/placeholder.svg"
+                              alt={review.user?.name}
+                            />
+                            <AvatarFallback className="bg-primary/10 text-primary font-bold text-sm">
+                              {review.user?.name
+                                ?.split(" ")
+                                .map((n: string) => n[0])
+                                .join("")
+                                .slice(0, 2) || "U"}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-gray-900">
+                                  {review.userId?.name ||
+                                    review.user?.name ||
+                                    "Người dùng"}
+                                </span>
+                                <span className="text-xs bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full font-medium border border-emerald-100">
+                                  {config.verifiedPurchase}
+                                </span>
+                              </div>
+
+                              {(currentUser?._id ===
+                                (review.userId?._id ||
+                                  review.userId ||
+                                  review.user?._id) ||
+                                currentUser?.role === 0) && (
+                                  <button
+                                    onClick={() => handleDeleteReview(review._id)}
+                                    className="text-red-500 hover:text-red-700 transition-colors p-1"
+                                    title="Xóa đánh giá"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <StarRating rating={review.rating} size="sm" />
+                              <span className="text-xs text-gray-400">
+                                {new Date(review.createdAt).toLocaleDateString(
+                                  "vi-VN",
+                                )}
+                              </span>
+                            </div>
+                            {review.title && (
+                              <h4 className="font-semibold text-gray-800">
+                                {review.title}
+                              </h4>
+                            )}
+                            <p className="text-gray-500 leading-relaxed text-sm">
+                              {review.comment}
+                            </p>
+                            {review.images?.length > 0 && (
+                              <div className="flex gap-2 flex-wrap pt-1">
+                                {review.images.map((img: any, idx: number) => (
+                                  <div
+                                    key={idx}
+                                    onClick={() => setActivePreviewUrl(img.url)}
+                                    className="w-16 h-16 rounded-xl overflow-hidden bg-gray-100 border border-gray-200 hover:scale-105 transition-transform cursor-pointer group"
+                                  >
+                                    <Image
+                                      src={img.url || "/placeholder.svg"}
+                                      alt=""
+                                      width={64}
+                                      height={64}
+                                      className="w-full h-full object-cover group-hover:opacity-80 transition-opacity"
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <ModalCore
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={confirmDeleteReview}
+        title="Xóa đánh giá"
+        description="Bạn có thực sự muốn xóa đánh giá này? Hành động này không thể hoàn tác."
+        confirmText="Xác nhận xóa"
+        cancelText="Để tôi xem lại"
+        type="danger"
+        isLoading={deletingLoading}
+      />
+    </div>
+  );
+}
