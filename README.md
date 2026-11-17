@@ -36,7 +36,7 @@ Pet Nest is a web application that brings pet products, pet profiles, and spa se
 
 ```bash
 git clone https://github.com/trantuandev/pet-nest-personal.git
-cd pet-nest
+cd pet-nest-personal
 ```
 
 ### 2. Configure and Start the Backend
