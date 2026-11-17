@@ -65,12 +65,17 @@ export default function ProductsPage() {
     }
     return acc;
   }, {} as Record<string, number>);
-  const brands = Object.entries(brandCounts).map(([name, count]) => ({ name, count }));
+  const brands = Object.entries(brandCounts).map(([name, count]) => ({
+    name,
+    count,
+  }));
 
   const filteredBrands = brands.filter((brand) =>
-    brand.name.toLowerCase().includes(brandSearch.toLowerCase()),
+    brand.name.toLowerCase().includes(brandSearch.toLowerCase())
   );
-  const displayedBrands = showMoreBrands ? filteredBrands : filteredBrands.slice(0, 7);
+  const displayedBrands = showMoreBrands
+    ? filteredBrands
+    : filteredBrands.slice(0, 7);
 
   const handleCategoryClick = (categoryId: string) => {
     resetFilters();
@@ -149,7 +154,7 @@ export default function ProductsPage() {
               <p className="text-gray-700 font-medium">
                 {categoryPageConfig.sort.results.replace(
                   "{count}",
-                  products.length.toString(),
+                  products.length.toString()
                 )}
               </p>
               <div className="flex items-center space-x-3">
@@ -161,12 +166,24 @@ export default function ProductsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="relevance">{categoryPageConfig.sort.relevance}</SelectItem>
-                    <SelectItem value="price-low">{categoryPageConfig.sort.priceLow}</SelectItem>
-                    <SelectItem value="price-high">{categoryPageConfig.sort.priceHigh}</SelectItem>
-                    <SelectItem value="rating">{categoryPageConfig.sort.rating}</SelectItem>
-                    <SelectItem value="newest">{categoryPageConfig.sort.newest}</SelectItem>
-                    <SelectItem value="bestselling">{categoryPageConfig.sort.bestselling}</SelectItem>
+                    <SelectItem value="relevance">
+                      {categoryPageConfig.sort.relevance}
+                    </SelectItem>
+                    <SelectItem value="price-low">
+                      {categoryPageConfig.sort.priceLow}
+                    </SelectItem>
+                    <SelectItem value="price-high">
+                      {categoryPageConfig.sort.priceHigh}
+                    </SelectItem>
+                    <SelectItem value="rating">
+                      {categoryPageConfig.sort.rating}
+                    </SelectItem>
+                    <SelectItem value="newest">
+                      {categoryPageConfig.sort.newest}
+                    </SelectItem>
+                    <SelectItem value="bestselling">
+                      {categoryPageConfig.sort.bestselling}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>

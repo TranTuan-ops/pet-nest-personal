@@ -24,7 +24,9 @@ export const metadata: Metadata = {
 };
 
 const clientId =
-  process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "";
+  process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
+  process.env.GOOGLE_CLIENT_ID ||
+  "";
 
 export default function RootLayout({
   children,
