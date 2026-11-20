@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { BACKEND_ORIGIN } from "@/config/backend";
 import { AxiosError } from "axios";
 import { PawPrint, Plus, Pencil, Trash2, X } from "lucide-react";
 
@@ -252,7 +253,7 @@ export default function PetProfilePage() {
       return image;
     }
 
-    return `http://localhost:5000${
+    return `${BACKEND_ORIGIN}${
       image.startsWith("/") ? image : `/${image}`
     }`;
   }

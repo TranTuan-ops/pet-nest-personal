@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: pet-nest-personal-api
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: be
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: ">=24.0.0 <25.0.0"
+      - key: MONGO_URI
+        sync: false
+      - key: CLIENT_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: OTP_ENCRYPTION_KEY
+        generateValue: true
+
+  - type: web
+    name: pet-nest-personal-web
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: fe
+    buildCommand: npm ci --include=dev && npm run build -- --webpack
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: ">=24.0.0 <25.0.0"
+      - key: NEXT_PUBLIC_API_URL
+        sync: false

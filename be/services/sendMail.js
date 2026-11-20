@@ -1,15 +1,7 @@
 require('dotenv').config();
 
-const nodemailer = require("nodemailer");
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || "smtp.gmail.com",
-  port: process.env.EMAIL_PORT || 587,
-  secure: false, // true for port 465, false for other ports
-  auth: {
-    user: process.env.EMAIL_USER || "vinhnm203@gmail.com",
-    pass: process.env.EMAIL_PASSWORD,
-  },
-});
+const transporter = require("../config/email");
+const from = process.env.EMAIL_FROM || process.env.EMAIL_USER;
 
 exports.MailForgotPass = async (receiver, otp) => {
   try {
@@ -22,7 +14,7 @@ exports.MailForgotPass = async (receiver, otp) => {
     }
 
     const info = await transporter.sendMail({
-      from: `"${process.env.EMAIL_USER}"`,
+      from,
       to: receiver.email,
       subject: "Mã OTP để đặt lại mật khẩu",
       text: `Kính gửi ${receiver.name},
@@ -83,7 +75,7 @@ exports.MailPasswordChanged = async (receiver) => {
     }
 
     const info = await transporter.sendMail({
-      from: `"${process.env.EMAIL_USER}"`,
+      from,
       to: receiver.email,
       subject: "Thông báo thay đổi mật khẩu",
       text: `Kính gửi ${receiver.name},
@@ -148,7 +140,7 @@ Hệ thống hỗ trợ`,
 
 exports.sendMail = async (to, subject, html) => {
   const info = await transporter.sendMail({
-    from: `"${process.env.EMAIL_USER}"`,
+    from,
     to,
     subject,
     html

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { connectBackendSocket } from "@/lib/backendSocket";
 import { SendHorizonal, MessageCircle, UserRound } from 'lucide-react';
 import { api } from '../../../utils/axios';
 
@@ -32,15 +32,6 @@ interface MessageItem {
 interface NewMessagePayload {
   conversationId: string;
   message?: MessageItem;
-}
-
-let chatSocket: Socket | null = null;
-
-function getChatSocket() {
-  if (!chatSocket) {
-    chatSocket = io('http://localhost:5000');
-  }
-  return chatSocket;
 }
 
 function parseToken() {
@@ -141,11 +132,7 @@ export default function SupportChatBox({ forceStaffMode = false }: { forceStaffM
   useEffect(() => {
     if (!me?.id) return;
 
-    const socket = getChatSocket();
-    socket.emit('join', me.id);
-    if (forceStaffMode) {
-      socket.emit('joinStaffCare');
-    }
+    const socket = connectBackendSocket();
 
     const onNewMessage = async (payload: NewMessagePayload) => {
       if (!payload?.conversationId) return;
@@ -185,7 +172,7 @@ export default function SupportChatBox({ forceStaffMode = false }: { forceStaffM
     socket.on('newMessage', onNewMessage);
 
     return () => {
-      socket.off('newMessage', onNewMessage);
+      socket.disconnect();
     };
   }, [me?.id, selectedConversationId, forceStaffMode]);
 

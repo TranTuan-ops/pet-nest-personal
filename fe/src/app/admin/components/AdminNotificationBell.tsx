@@ -4,7 +4,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Bell, CheckCheck, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { io, Socket } from "socket.io-client";
+import type { Socket } from "socket.io-client";
+import { connectBackendSocket } from "@/lib/backendSocket";
 import { api, useApi } from "../../../../utils/axios";
 import { useRouter } from "next/navigation";
 
@@ -137,23 +138,15 @@ export default function AdminNotificationBell({
   }, []);
 
   useEffect(() => {
-    const API_URL =
-      process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-    const SOCKET_URL = new URL(API_URL).origin;
+    if (!adminId) return;
 
-    const socket = io(SOCKET_URL, {
+    const socket = connectBackendSocket({
       path: "/socket.io",
       transports: ["websocket"],
       reconnection: true,
     });
 
     socketRef.current = socket;
-
-    socket.on("connect", () => {
-      if (adminId) {
-        socket.emit("join", adminId);
-      }
-    });
 
     socket.on("notification", (newNotification: NotificationItem) => {
       setNotifications((prev) => {

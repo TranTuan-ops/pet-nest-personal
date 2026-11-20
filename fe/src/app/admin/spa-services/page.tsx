@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { BACKEND_ORIGIN } from "@/config/backend";
 import { useEffect, useMemo, useState } from "react";
 import { AxiosError } from "axios";
 import { Edit, Eye, Plus, Trash2 } from "lucide-react";
@@ -145,7 +146,7 @@ function getImageUrl(url?: string) {
   const serverUrl =
     serverUrlRaw && /^https?:\/\//i.test(serverUrlRaw)
       ? serverUrlRaw.replace(/\/+$/, "")
-      : "http://localhost:5000";
+      : BACKEND_ORIGIN;
 
   const normalizedPath = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 

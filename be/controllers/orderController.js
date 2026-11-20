@@ -140,7 +140,7 @@ exports.createOrder = async (req, res) => {
 
         // Nếu thanh toán qua PayOS
         if (paymentMethod === 'payos') {
-            const YOUR_DOMAIN = process.env.BASE_URL || 'http://localhost:3000';
+            const YOUR_DOMAIN = process.env.CLIENT_URL || 'http://localhost:3000';
             const checkoutData = {
                 orderCode: orderCode,
                 amount: finalTotal,

@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { BACKEND_ORIGIN } from "@/config/backend";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -878,5 +879,5 @@ function getSpaImageUrl(image?: string) {
     return trimmed;
   }
 
-  return `http://localhost:5000${trimmed.startsWith("/") ? trimmed : `/${trimmed}`}`;
+  return `${BACKEND_ORIGIN}${trimmed.startsWith("/") ? trimmed : `/${trimmed}`}`;
 }

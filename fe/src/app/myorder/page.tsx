@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { BACKEND_ORIGIN } from "@/config/backend";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { api, useApi } from "../../../utils/axios";
 import { toast } from "sonner";
-import { io, Socket } from "socket.io-client";
-import { jwtDecode } from "jwt-decode";
+import { connectBackendSocket } from "@/lib/backendSocket";
 import { useLanguage } from "@/context/LanguageContext";
 import pagesConfigEn from "../../../utils/petPagesConfig.en.js";
 import pagesConfigVi from "../../../utils/petPagesConfig.vi.js";
@@ -77,19 +77,8 @@ export default function MyOrdersPage() {
     fetchOrders();
 
     // Socket implementation for real-time status updates
-    const socket: Socket = io("http://localhost:5000");
-    const token = sessionStorage.getItem("token");
-    let userId = null;
-    if (token) {
-      try {
-        const decoded = jwtDecode<{ id: string }>(token);
-        userId = decoded.id;
-      } catch (err) {}
-    }
-    if (userId) {
-      socket.emit("join", userId);
-    }
-    
+    const socket = connectBackendSocket();
+
     socket.on("notification", (notification: any) => {
       if (notification?.type === "order-update" || notification?.type === "order") {
         fetchOrders();
@@ -157,7 +146,7 @@ export default function MyOrdersPage() {
     }
 
     // Mặc định prepand address server
-    return `http://localhost:5000/${url.startsWith("/") ? url.slice(1) : url}`;
+    return `${BACKEND_ORIGIN}/${url.startsWith("/") ? url.slice(1) : url}`;
   };
 
   const getStatusIcon = (status: Order["status"]) => {

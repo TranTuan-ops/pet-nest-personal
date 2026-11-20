@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { BACKEND_ORIGIN } from "@/config/backend";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -43,7 +44,7 @@ interface Pet {
 function getPetImageUrl(image?: string) {
   if (!image) return "/placeholder.svg";
   if (image.startsWith("http://") || image.startsWith("https://")) return image;
-  return `http://localhost:5000${image.startsWith("/") ? image : `/${image}`}`;
+  return `${BACKEND_ORIGIN}${image.startsWith("/") ? image : `/${image}`}`;
 }
 
 function getSpaImageUrl(image?: string) {
@@ -55,7 +56,7 @@ function getSpaImageUrl(image?: string) {
     return trimmed;
   }
 
-  return `http://localhost:5000${
+  return `${BACKEND_ORIGIN}${
     trimmed.startsWith("/") ? trimmed : `/${trimmed}`
   }`;
 }

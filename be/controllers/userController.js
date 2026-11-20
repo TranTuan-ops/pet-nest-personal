@@ -458,7 +458,7 @@ const sendVerificationEmail = async (email, verificationToken) => {
   }/api/auth/verify-email?token=${verificationToken}`;
 
   const mailOptions = {
-    from: process.env.EMAIL_USER,
+    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
     to: email,
     subject: "Verify your email",
     html: `

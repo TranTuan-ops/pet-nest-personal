@@ -36,6 +36,6 @@ const conversationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-conversationSchema.index({ customerId: 1, staffId: 1 }, { unique: true });
+conversationSchema.index({ customerId: 1, staffId: 1 }, { name: 'customerId_1_staffId_1_lookup' });
 
 module.exports = mongoose.model('Conversation', conversationSchema);

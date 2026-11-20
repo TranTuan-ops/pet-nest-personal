@@ -1,21 +1,7 @@
-const nodemailer = require("nodemailer");
-
-// console.log("EMAIL_USER =", process.env.EMAIL_USER);
-// console.log(
-//   "EMAIL_PASSWORD length =",
-//   process.env.EMAIL_PASSWORD ? process.env.EMAIL_PASSWORD.length : 0
-// );
+const transporter = require("../config/email");
 
 const hasEmailConfig =
   Boolean(process.env.EMAIL_USER) && Boolean(process.env.EMAIL_PASSWORD);
-
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD,
-  },
-});
 
 if (hasEmailConfig) {
   transporter.verify((error) => {
@@ -32,12 +18,13 @@ if (hasEmailConfig) {
 }
 
 exports.sendSubscribeEmail = async (email) => {
-  const unsubscribeUrl = `http://localhost:5000/api/subscribers/unsubscribe?email=${encodeURIComponent(
+  const baseUrl = process.env.BASE_URL || "http://localhost:5000";
+  const unsubscribeUrl = `${baseUrl}/api/subscribers/unsubscribe?email=${encodeURIComponent(
     email
   )}`;
 
   await transporter.sendMail({
-    from: `"PetNest" <${process.env.EMAIL_USER}>`,
+    from: process.env.EMAIL_FROM || `"PetNest" <${process.env.EMAIL_USER}>`,
     to: email,
     subject: "Đăng ký nhận tin thành công - PetNest",
     html: `

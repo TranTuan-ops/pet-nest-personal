@@ -167,7 +167,7 @@ const sendVerificationEmail = async (email, verificationToken) => {
   const verificationUrl = `${process.env.BASE_URL || 'http://localhost:5000'}/api/auth/verify-email?token=${verificationToken}`;
 
   const mailOptions = {
-    from: process.env.EMAIL_USER,
+    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
     to: email,
     subject: 'Verify your email',
     html: `

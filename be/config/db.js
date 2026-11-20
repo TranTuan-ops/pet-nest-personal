@@ -2,8 +2,12 @@ const mongoose = require("mongoose");
 
 const connectDB = async () => {
   try {
+    if (process.env.NODE_ENV === "production" && !process.env.MONGO_URI?.trim()) {
+      throw new Error("MONGO_URI is required in production");
+    }
+
     const mongoUri =
-      process.env.MONGO_URI || "mongodb://127.0.0.1:27017/pet-nest";
+      process.env.MONGO_URI?.trim() || "mongodb://127.0.0.1:27017/pet-nest";
 
     const conn = await mongoose.connect(mongoUri);
 

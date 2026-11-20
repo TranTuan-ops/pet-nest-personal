@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import { io, Socket } from "socket.io-client";
+import type { Socket } from "socket.io-client";
+import { connectBackendSocket } from "@/lib/backendSocket";
 import { toast } from "sonner";
 import { api, useApi } from "../../../../../utils/axios";
 import { Subscriber } from "../types";
@@ -54,20 +55,13 @@ export const useSubscribers = (itemsPerPage: number = 5) => {
       const adminId = decoded.id || decoded._id;
       if (!adminId) return;
 
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-      const SOCKET_URL = new URL(API_URL).origin;
-
-      const socket = io(SOCKET_URL, {
+      const socket = connectBackendSocket({
         path: "/socket.io",
         transports: ["websocket"],
         reconnection: true,
       });
 
       socketRef.current = socket;
-
-      socket.on("connect", () => {
-        socket.emit("join", adminId);
-      });
 
       socket.on("notification", (newNotification: NotificationItem) => {
         if (newNotification.type === "subscriber") {

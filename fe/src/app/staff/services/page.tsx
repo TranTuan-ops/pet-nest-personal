@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { BACKEND_ORIGIN } from "@/config/backend";
 import { api, useApi } from "../../../../utils/axios";
 import { toast } from "sonner";
-import { io, Socket } from "socket.io-client";
-import { jwtDecode } from "jwt-decode";
+import { connectBackendSocket } from "@/lib/backendSocket";
 
 type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
 type PaymentStatus = "paid" | "unpaid";
@@ -109,7 +109,7 @@ function BookingCard({
     if (!image) return "/placeholder.svg";
     if (image.startsWith("http://") || image.startsWith("https://"))
       return image;
-    return `http://localhost:5000${
+    return `${BACKEND_ORIGIN}${
       image.startsWith("/") ? image : `/${image}`
     }`;
   }
@@ -415,16 +415,8 @@ export default function StaffServicesPage() {
 
   useEffect(() => {
     // Kết nối socket và lắng nghe notification
-    const socket: Socket = io("http://localhost:5000");
-    const token = sessionStorage.getItem("token");
-    let userId = null;
-    if (token) {
-      const decoded = jwtDecode<{ id: string }>(token);
-      userId = decoded.id;
-    }
-    if (userId) {
-      socket.emit("join", userId);
-    }
+    const socket = connectBackendSocket();
+
     socket.on("notification", (notification: any) => {
       if (notification?.type === "spa-booking") {
         fetchBookings();

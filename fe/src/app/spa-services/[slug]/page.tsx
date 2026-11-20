@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { BACKEND_ORIGIN } from "@/config/backend";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -33,7 +34,7 @@ function getSpaImageUrl(image?: string) {
     return trimmed;
   }
 
-  return `http://localhost:5000${
+  return `${BACKEND_ORIGIN}${
     trimmed.startsWith("/") ? trimmed : `/${trimmed}`
   }`;
 }

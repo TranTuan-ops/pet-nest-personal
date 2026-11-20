@@ -32,7 +32,7 @@ import { api } from "../../../utils/axios";
 import { useRouter, usePathname } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
 import { useLanguage } from "@/context/LanguageContext";
-import { io, Socket } from "socket.io-client";
+import { connectBackendSocket } from "@/lib/backendSocket";
 import pagesConfigEn from "../../../utils/petPagesConfig.en.js";
 import pagesConfigVi from "../../../utils/petPagesConfig.vi.js";
 import { jwtDecode } from "jwt-decode";
@@ -114,15 +114,6 @@ interface SearchSpaItem {
 interface SearchSuggestionResponse {
   products: SearchProductItem[];
   spaServices: SearchSpaItem[];
-}
-
-let socket: Socket | null = null;
-
-export function getSocket() {
-  if (!socket) {
-    socket = io("http://localhost:5000", {});
-  }
-  return socket;
 }
 
 function CartDropdown() {
@@ -265,18 +256,7 @@ function NotificationDropdown() {
   }, []);
 
   useEffect(() => {
-    const socket = getSocket();
-    const token = sessionStorage.getItem("token");
-    let userId = null;
-
-    if (token) {
-      const decoded = jwtDecode<{ id: string }>(token);
-      userId = decoded.id;
-    }
-
-    if (userId) {
-      socket.emit("join", userId);
-    }
+    const socket = connectBackendSocket();
 
     socket.on("notification", (notification: Notification) => {
       setNotifications((prev) => {
@@ -287,7 +267,7 @@ function NotificationDropdown() {
     });
 
     return () => {
-      socket.off("notification");
+      socket.disconnect();
     };
   }, []);
 
@@ -865,18 +845,7 @@ export default function Header({
   useEffect(() => {
     if (!isLoggedIn || userRole !== 1) return;
 
-    const socket = getSocket();
-    const token = sessionStorage.getItem("token");
-    let userId = null;
-
-    if (token) {
-      const decoded = jwtDecode<{ id: string }>(token);
-      userId = decoded.id;
-    }
-
-    if (userId) {
-      socket.emit("join", userId);
-    }
+    const socket = connectBackendSocket();
 
     socket.on("newMessage", () => {
       if (pathname !== "/messages") {
@@ -885,7 +854,7 @@ export default function Header({
     });
 
     return () => {
-      socket.off("newMessage");
+      socket.disconnect();
     };
   }, [isLoggedIn, userRole, pathname]);
 
