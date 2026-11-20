@@ -95,31 +95,74 @@ npm run build
 npm start
 ```
 
-## Deploy với MongoDB Atlas Free và Render
+## Deploy with MongoDB Atlas and Render
 
-1. Trong [MongoDB Atlas](https://cloud.mongodb.com/), tạo cluster **Free (M0)** và một database user có quyền `readWrite` trên database `pet-nest`. Lấy URI từ **Connect → Drivers**, điền mật khẩu đã URL-encode và dùng tên database ngay trước dấu `?`, ví dụ `mongodb+srv://<user>:<password>@<cluster>/pet-nest?retryWrites=true&w=majority`. [Tài liệu Atlas Free](https://www.mongodb.com/docs/atlas/tutorial/deploy-free-tier-cluster/)
-2. Đưa các thay đổi triển khai lên GitHub. Trong [Render Dashboard](https://dashboard.render.com/), chọn **New → Blueprint**, cấp quyền cho repo `trantuandev/pet-nest-personal` và chọn nhánh có [render.yaml](render.yaml). Blueprint tạo hai Web Service gói Free ở Singapore và sinh `JWT_SECRET` cùng `OTP_ENCRYPTION_KEY` cho backend. [Tài liệu Render Blueprint](https://render.com/docs/infrastructure-as-code)
-3. Nhập các biến môi trường bên dưới khi tạo Blueprint. Nếu Render cấp hostname khác với ví dụ, cập nhật các biến URL theo hostname thực tế trong dashboard rồi redeploy frontend để Next.js đưa URL mới vào bản build.
+Render hosts the Express API and the Next.js frontend as separate Node.js Web Services. The frontend calls the API, and the API connects to the `pet-nest` database on MongoDB Atlas.
 
-   | Service | Biến môi trường | Giá trị |
-   | --- | --- | --- |
-   | Backend | `MONGO_URI` | URI kết nối Atlas của database `pet-nest` |
-   | Backend | `CLIENT_URL` | URL frontend, ví dụ `https://pet-nest-personal-web.onrender.com` |
-   | Frontend | `NEXT_PUBLIC_API_URL` | URL backend kèm `/api`, ví dụ `https://pet-nest-personal-api.onrender.com/api` |
+- [Deployed frontend](https://pet-nest-personal.onrender.com/homepage)
+- [Deployed API health check](https://pet-nest-personal-api.onrender.com/health)
 
-4. Trên service backend, vào **Connect → Outbound** và thêm các dải IP được liệt kê vào **Network Access → IP Access List** của Atlas. Nếu lần deploy đầu thất bại trong lúc cấu hình danh sách IP, chạy **Manual Deploy** lại sau khi Atlas áp dụng thay đổi. [Dải IP outbound của Render](https://render.com/docs/outbound-ip-addresses)
-5. Mở `<URL-backend>/health` để kiểm tra HTTP 200 và JSON `{"status":"ok"}`. Sau đó mở `<URL-frontend>/homepage` và kiểm tra các API lấy danh mục, sản phẩm và dịch vụ.
+### 1. Set Up MongoDB Atlas
 
-Cluster mới chứa database trống. `db_PETSHOP.rar` chứa các tệp JSON theo collection, gồm cả dữ liệu tài khoản và giao dịch. Với bản demo, chọn dữ liệu đã rà soát và dùng [`mongoimport --jsonArray`](https://www.mongodb.com/docs/atlas/import/mongoimport/) để đưa từng collection cần thiết vào `pet-nest`. Giữ lại `_id` của tài liệu để các quan hệ còn hoạt động.
+1. Create a **Free (M0)** cluster, or use an existing Atlas cluster. [Atlas Free cluster setup](https://www.mongodb.com/docs/atlas/tutorial/deploy-free-tier-cluster/)
+2. Under **Security → Database & Network Access → Database Users**, create a password-authenticated database user with `readWrite` access to `pet-nest`.
+3. Open **Clusters → Connect → Drivers and Client Libraries → Node.js** and copy the connection string. Replace the password placeholder with the database user's password, percent-encoding any reserved characters. Add `pet-nest` after the hostname and before `?`, and keep the query parameters Atlas provides. [Atlas connection instructions](https://www.mongodb.com/docs/atlas/driver-connection/)
 
-### Tích hợp tùy chọn
+```text
+mongodb+srv://<db-user>:<encoded-password>@<atlas-host>/pet-nest?retryWrites=true&w=majority
+```
 
-- Đăng nhập Google cần `GOOGLE_CLIENT_ID` trên backend, cùng giá trị trong `NEXT_PUBLIC_GOOGLE_CLIENT_ID` trên frontend, và URL frontend trong danh sách JavaScript origins của Google OAuth.
-- Đăng ký bằng email, đặt lại mật khẩu và email đăng ký nhận tin cần `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USER`, `EMAIL_PASSWORD` và địa chỉ gửi đã xác minh trong `EMAIL_FROM`. Render Free chặn các cổng SMTP 25, 465 và 587. Có thể cấu hình một relay hỗ trợ cổng 2525. [Giới hạn Render Free](https://render.com/docs/free) · [Cổng SMTP của Brevo](https://help.brevo.com/hc/en-us/articles/10905415650322-Which-SMTP-port-should-I-use-Port-587-465-or-2525)
-- Các tính năng đã tích hợp Cloudinary cần `CLOUDINARY_NAME`, `CLOUDINARY_KEY` và `CLOUDINARY_SECRET` trên backend. Các ảnh blog, banner, thú cưng và dịch vụ spa lưu trong `be/uploads` hiện chỉ tồn tại trong vòng đời của instance Render Free. [Lưu trữ trên Render Free](https://render.com/docs/free#local-files-lost-on-redeploy)
-- PayOS cần `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY`. Các tính năng Gemini cần `GEMINI_API_KEY` trên backend.
+Save the URI in the backend's Render environment. For local development with Atlas, put it in `be/.env` and add your own IP address to Atlas. Keep credentials out of Git.
 
-Render Free đưa dịch vụ vào trạng thái ngủ sau 15 phút không có lưu lượng. Các Web Service Free dùng chung hạn mức giờ chạy của workspace. [Giới hạn Render Free](https://render.com/docs/free)
+### 2. Deploy the API and Frontend on Render
+
+Push your changes to GitHub, then connect `trantuandev/pet-nest-personal` to Render. To provision both services together, select **New → Blueprint**, choose the `main` branch, and use the root [render.yaml](render.yaml). The Blueprint requests Free services and generates the backend secrets. [Render Blueprint setup](https://render.com/docs/infrastructure-as-code)
+
+To configure the services manually, select **New → Web Service** for each one and use the following settings. Deploy the backend first so you can use its public URL when configuring the frontend. [Render monorepo settings](https://render.com/docs/monorepo-support#setting-a-root-directory)
+
+| Setting | Backend | Frontend |
+| --- | --- | --- |
+| Branch | `main` | `main` |
+| Runtime | Node | Node |
+| Instance type | Free | Free |
+| Root Directory | `be` | `fe` |
+| Build Command | `npm ci` | `npm ci --include=dev && npm run build -- --webpack` |
+| Start Command | `npm start` | `npm start` |
+| Health Check Path | `/health` | `/homepage` |
+
+Set these variables in the **Environment** tab of the matching service. Use the public URLs assigned to your services.
+
+| Service | Variable | Value |
+| --- | --- | --- |
+| Backend | `MONGO_URI` | Atlas connection string for the `pet-nest` database |
+| Backend | `CLIENT_URL` | Frontend origin, such as `https://pet-nest-personal.onrender.com` |
+| Backend | `JWT_SECRET` | A long, randomly generated secret for signing tokens |
+| Backend | `OTP_ENCRYPTION_KEY` | A separate random secret for password-reset codes |
+| Frontend | `NEXT_PUBLIC_API_URL` | Backend URL ending in `/api`, such as `https://pet-nest-personal-api.onrender.com/api` |
+| Both | `NODE_VERSION` | `>=24.0.0 <25.0.0`, as configured in the Blueprint |
+
+For a manual deployment, generate the two backend secrets independently. If Render assigns the frontend a different URL, update `CLIENT_URL` and redeploy the backend. Redeploy the frontend whenever `NEXT_PUBLIC_API_URL` changes because Next.js reads it at build time.
+
+### 3. Allow Render to Reach Atlas
+
+1. On the **backend** service in Render, open **Connect → Outbound** and copy its outbound IP ranges. [Render outbound IP addresses](https://render.com/docs/outbound-ip-addresses)
+2. In Atlas, open **Security → Database & Network Access → IP Access List**. Add each range as a separate **Access List Entry** and keep the CIDR suffix, such as `/24`. [Atlas IP access list](https://www.mongodb.com/docs/atlas/security/ip-access-list/)
+3. Once the entries are **Active**, select **Manual Deploy → Deploy latest commit** on the backend if its first deploy failed.
+
+### 4. Verify the Deployment
+
+Open `/health` on the backend URL and check for HTTP 200 with `{"status":"ok"}`. Open `/api/products/all` to verify the catalog, then visit `/homepage` and `/products` on the frontend.
+
+A new Atlas database starts without Pet Nest records. For a demo, review the JSON files in `db_PETSHOP.rar` and import the collections you need into `pet-nest` with `mongoimport --jsonArray`. Preserve document `_id` values so references between collections still work. The archive also contains account and transaction records. [Atlas JSON import instructions](https://www.mongodb.com/docs/atlas/import/mongoimport/)
+
+### Optional Integrations and Free-Tier Limits
+
+- Google sign-in uses `GOOGLE_CLIENT_ID` on the backend and the same ID in `NEXT_PUBLIC_GOOGLE_CLIENT_ID` on the frontend. Add the public frontend origin to the Google OAuth client's authorized JavaScript origins.
+- Email registration, password reset, and subscription messages use `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USER`, `EMAIL_PASSWORD`, and a verified address in `EMAIL_FROM`. Render Free blocks SMTP ports 25, 465, and 587. A relay that supports port 2525 can be used. [Render Free limits](https://render.com/docs/free) · [Brevo SMTP ports](https://help.brevo.com/hc/en-us/articles/10905415650322-Which-SMTP-port-should-I-use-Port-587-465-or-2525)
+- Cloudinary-backed uploads use `CLOUDINARY_NAME`, `CLOUDINARY_KEY`, and `CLOUDINARY_SECRET`. Uploads stored in `be/uploads` are temporary on Render Free and can be lost when a service restarts. [Render filesystem limits](https://render.com/docs/free#local-files-lost-on-redeploy)
+- PayOS uses `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, and `PAYOS_CHECKSUM_KEY`. Gemini features use `GEMINI_API_KEY`.
+
+Render Free services spin down after 15 minutes of inactivity. The next request may take about a minute while the service starts again. The Free services share the workspace's monthly instance hours. [Render Free limits](https://render.com/docs/free)
 
 ---
 
